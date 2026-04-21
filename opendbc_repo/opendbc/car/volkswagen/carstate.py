@@ -79,6 +79,11 @@ class CarState(CarStateBase):
           return True
     return False
 
+  @staticmethod
+  def pq_lateral_available(cruise_main_switch: bool, cruise_faulted: bool, cruise_fault_lateral_active: bool) -> bool:
+    # AOL treats lateralAvailable as the driver's runtime LKAS toggle; PQ TSK can stay available after main is off.
+    return cruise_main_switch and (not cruise_faulted or cruise_fault_lateral_active)
+
   def create_button_events(self, pt_cp, buttons):
     button_events = []
 
@@ -496,8 +501,7 @@ class CarState(CarStateBase):
     ret.cruiseState.available = (cruise_main_switch or cruise_tsk_status) and not cruise_faulted
 
     allow_lat_only = self._params.get_bool("AllowLateralWhenLongUnavailable")
-    cruise_main_available = cruise_main_switch or cruise_tsk_status
-    cruise_fault_candidate = allow_lat_only and cruise_faulted and cruise_main_available
+    cruise_fault_candidate = allow_lat_only and cruise_faulted and cruise_main_switch
 
     if cruise_fault_candidate:
       self.cruise_faulted_frames += 1
@@ -507,7 +511,7 @@ class CarState(CarStateBase):
     else:
       self.cruise_faulted_frames = 0
       if self.cruise_fault_lateral_active:
-        if not cruise_main_available:
+        if not cruise_main_switch:
           self.cruise_fault_lateral_active = False
           self.cruise_fault_clear_frames = 0
         elif ret.cruiseState.available:
@@ -526,7 +530,7 @@ class CarState(CarStateBase):
       self.cruise_fault_clear_frames = 0
 
     ret.cruiseFaultLateralMode = self.cruise_fault_lateral_active
-    ret.lateralAvailable = ret.cruiseState.available or ret.cruiseFaultLateralMode
+    ret.lateralAvailable = self.pq_lateral_available(cruise_main_switch, cruise_faulted, ret.cruiseFaultLateralMode)
     ret.blockPcmEnable = ret.cruiseFaultLateralMode and not ret.cruiseState.available
 
     # Update ACC setpoint. When the setpoint reads as 255, the driver has not

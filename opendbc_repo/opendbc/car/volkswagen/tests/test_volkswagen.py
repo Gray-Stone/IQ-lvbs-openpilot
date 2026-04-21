@@ -2,6 +2,7 @@ import random
 import re
 
 from opendbc.car.structs import CarParams
+from opendbc.car.volkswagen.carstate import CarState
 from opendbc.car.volkswagen.values import CAR, FW_QUERY_CONFIG, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
@@ -72,3 +73,12 @@ class TestVolkswagenPlatformConfigs:
 
                 expected_matches = {platform} if should_match else set()
                 assert expected_matches == matches, "Bad match"
+
+
+class TestVolkswagenPqAol:
+  def test_lateral_available_follows_main_switch(self):
+    assert not CarState.pq_lateral_available(cruise_main_switch=False, cruise_faulted=False, cruise_fault_lateral_active=False)
+    assert not CarState.pq_lateral_available(cruise_main_switch=False, cruise_faulted=True, cruise_fault_lateral_active=True)
+    assert CarState.pq_lateral_available(cruise_main_switch=True, cruise_faulted=False, cruise_fault_lateral_active=False)
+    assert not CarState.pq_lateral_available(cruise_main_switch=True, cruise_faulted=True, cruise_fault_lateral_active=False)
+    assert CarState.pq_lateral_available(cruise_main_switch=True, cruise_faulted=True, cruise_fault_lateral_active=True)
