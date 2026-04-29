@@ -5,7 +5,7 @@ import cereal.messaging as messaging
 from cereal import log
 
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
-from openpilot.selfdrive.locationd.calibration_helpers import get_calibrated_rpy, get_render_path_height
+from openpilot.selfdrive.locationd.calibration_helpers import get_calibrated_rpy, get_modeld_warp_rpy, get_render_path_height
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator
 
 
@@ -25,6 +25,22 @@ def test_get_calibrated_rpy_requires_calibrated_status():
 
   live_calib = build_live_calibration(log.LiveCalibrationData.Status.calibrated, rpy=(0.1, 0.2, 0.3))
   np.testing.assert_allclose(get_calibrated_rpy(live_calib), np.array([0.1, 0.2, 0.3], dtype=np.float32))
+
+
+def test_get_modeld_warp_rpy_allows_provisional_statuses():
+  for status in (log.LiveCalibrationData.Status.uncalibrated,
+                 log.LiveCalibrationData.Status.recalibrating,
+                 log.LiveCalibrationData.Status.calibrated):
+    live_calib = build_live_calibration(status, rpy=(0.1, 0.2, 0.3))
+    np.testing.assert_allclose(get_modeld_warp_rpy(live_calib), np.array([0.1, 0.2, 0.3], dtype=np.float32))
+
+
+def test_get_modeld_warp_rpy_rejects_invalid_or_nonfinite():
+  invalid = build_live_calibration(log.LiveCalibrationData.Status.invalid, rpy=(0.1, 0.2, 0.3))
+  assert get_modeld_warp_rpy(invalid) is None
+
+  nonfinite = build_live_calibration(log.LiveCalibrationData.Status.uncalibrated, rpy=(0.1, float('nan'), 0.3))
+  assert get_modeld_warp_rpy(nonfinite) is None
 
 
 def test_get_render_path_height_uses_default_until_calibrated():

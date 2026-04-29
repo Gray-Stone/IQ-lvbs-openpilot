@@ -24,7 +24,7 @@ from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.transformations.camera import DEVICE_CAMERAS
 from openpilot.common.transformations.model import get_warp_matrix
-from openpilot.selfdrive.locationd.calibration_helpers import get_calibrated_rpy
+from openpilot.selfdrive.locationd.calibration_helpers import get_modeld_warp_rpy
 from openpilot.selfdrive.controls.lib.desire_helper import DesireHelper
 from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, smooth_value, get_curvature_from_plan
 from openpilot.selfdrive.modeld.parse_model_outputs import Parser
@@ -345,10 +345,10 @@ def main(demo=False):
       model.lat_delay = get_lat_delay(params, sm["liveDelay"].lateralDelay)
     lat_delay = model.lat_delay + LAT_SMOOTH_SECONDS
     if sm.updated["liveCalibration"] and sm.seen['roadCameraState'] and sm.seen['deviceState']:
-      device_from_calib_euler = get_calibrated_rpy(sm["liveCalibration"])
+      live_calib = sm["liveCalibration"]
+      cal_status = getattr(live_calib.calStatus, "raw", live_calib.calStatus)
+      device_from_calib_euler = get_modeld_warp_rpy(live_calib)
       if device_from_calib_euler is None and not live_calib_seen:
-        live_calib = sm["liveCalibration"]
-        cal_status = getattr(live_calib.calStatus, "raw", live_calib.calStatus)
         log_issue_limited(
           "modeld_waiting_for_calibration",
           "calibration",
@@ -357,13 +357,21 @@ def main(demo=False):
           interval_sec=2.0,
         )
         device_from_calib_euler = np.zeros(3, dtype=np.float32)
+      elif device_from_calib_euler is not None and not live_calib_seen and live_calib.calStatus != log.LiveCalibrationData.Status.calibrated:
+        log_issue_limited(
+          "modeld_using_provisional_warp",
+          "calibration",
+          f"modeld using provisional warp status={cal_status} "
+          f"perc={float(live_calib.calPerc):.1f} rpy={list(live_calib.rpyCalib)} height={list(live_calib.height)}",
+          interval_sec=2.0,
+        )
 
       if device_from_calib_euler is not None:
         dc = DEVICE_CAMERAS[(str(sm['deviceState'].deviceType), str(sm['roadCameraState'].sensor))]
         model_transform_main = get_warp_matrix(device_from_calib_euler, dc.ecam.intrinsics if main_wide_camera else dc.fcam.intrinsics, False).astype(np.float32)
         model_transform_extra = get_warp_matrix(device_from_calib_euler, dc.ecam.intrinsics, True).astype(np.float32)
         if not live_calib_seen:
-          log_issue("calibration", f"modeld accepted calibrated warp rpy={device_from_calib_euler.tolist()}")
+          log_issue("calibration", f"modeld accepted warp rpy={device_from_calib_euler.tolist()} status={cal_status}")
         live_calib_seen = True
 
     traffic_convention = np.zeros(2)
